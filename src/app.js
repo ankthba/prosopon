@@ -339,6 +339,7 @@ function drawReport() {
       ${ancestryHtml}
       ${mutHtml}
     </div>
+    ${adviceHtml(rows)}
     ${rows.map((g) => `<div class="section">
       <h3>${esc(g.label)}</h3>
       ${g.note ? `<p class="gnote">${esc(g.note)}</p>` : ''}
@@ -347,7 +348,6 @@ function drawReport() {
     ${compositeHtml()}
     ${textureHtml()}
     ${skinHtml()}
-    ${protocolHtml(rows)}
     <p class="fineprint">
       These are measurements of geometry, not judgements of a person. Reference ranges come from specific study populations, chiefly North American and European. Nothing here is a medical opinion.
     </p>`;
@@ -366,6 +366,114 @@ function drawReport() {
 function repaint() {
   if (!S.front.R) return;
   renderOverlay($('#overlay'), S.front.R, { layers: S.front.layers, highlight: S.front.highlight });
+}
+
+/** What to actually do.
+ *
+ *  This leads the report, because a page of numbers with the answer buried at
+ *  the bottom is how you get "it's a lot of stats but I want to know what to
+ *  do". The ordering is deliberate and is not by how interesting a finding is:
+ *  photograph first, because a bad photograph makes everything below it wrong;
+ *  then the reversible things with real evidence; then structure, last and
+ *  grudgingly.
+ *
+ *  The gate on structure is the important part. An earlier version offered
+ *  genioplasty — jaw surgery — twice on the same face, for deviations of 0.11
+ *  and 0.30 SD against Renaissance canons. Nothing irreversible is now proposed
+ *  from an aesthetic convention at all, and nothing at all is proposed from a
+ *  deviation inside the measurement's own error. */
+
+const ADVICE_MIN_Z = 1.5;        // below this, the deviation is noise
+const SURGICAL_MIN_Z = 2.0;      // and an irreversible option needs more than that
+
+function buildAdvice(rows) {
+  const out = { photo: [], reversible: [], structural: [], nothing: false };
+  const res = S.front.res;
+
+  // --- 1. the photograph itself ---
+  for (const i of S.front.issues) {
+    if (i.level === 'fail' || i.level === 'warn') {
+      out.photo.push({ what: i.msg, code: i.code });
+    }
+  }
+  if (S.front.source === 'camera') {
+    out.photo.push({ code: 'webcam', what: 'This was taken on a webcam, at the short working distance that makes a nose measure wide and a face narrow. Re-shoot from two metres with the camera zoomed in and every number below gets more trustworthy.' });
+  }
+
+  // --- 2. skin: reversible, evidenced, and the part most people can move ---
+  const sk = S.front.skin;
+  if (sk) {
+    for (const f of (sk.findings || [])) {
+      if (f.severity === 'none' || !f.severity) continue;
+      if (f.id.startsWith('periorbital')) {
+        out.reversible.push({
+          title: `Under-eye darkness (${f.side === 'R' ? 'right' : 'left'})`,
+          detail: f.type === 'vascular'
+            ? 'The colour shift is toward blue, which is thin skin over the vasculature rather than pigment. Sleep duration, hydration and sleeping with the head slightly raised all move it within days; pigment treatments do not.'
+            : 'The colour shift is toward brown, which is pigment. Daily broad-spectrum sun protection is the intervention with the best evidence, over months. Sleep will not move it.',
+          strength: 'good evidence', reversible: true,
+        });
+      } else if (f.id.startsWith('erythema')) {
+        out.reversible.push({
+          title: f.label,
+          detail: 'Localised redness. Worth a dermatologist rather than a product if it is persistent rather than transient — rosacea and seborrhoeic dermatitis both present this way and both have actual treatments.',
+          strength: 'see a clinician', reversible: true,
+        });
+      }
+    }
+    if ((sk.warnings || []).length) {
+      out.photo.push({ code: 'light', what: sk.warnings[0] });
+    }
+  }
+
+  // --- 3. structure, gated hard ---
+  let items = [];
+  try { items = buildProtocol(rows, { minStatus: 'notable' }); } catch (e) { items = []; }
+  for (const it of items) {
+    const entry = NORMS[it.id] || PROFILE_NORMS[it.id];
+    if (!entry) continue;
+    if (!Number.isFinite(it.z) || Math.abs(it.z) < ADVICE_MIN_Z) continue;
+    // An aesthetic convention never justifies an irreversible option, and a
+    // measured distribution only does past two SD.
+    const allowIrreversible = entry.tier === 'anthro' && Math.abs(it.z) >= SURGICAL_MIN_Z;
+    const opts = (it.options || []).filter((o) => allowIrreversible || o.reversible === true || o.reversible === 'partial');
+    if (!opts.length) continue;
+    out.structural.push({ item: it, opts: opts.slice(0, 3), tier: entry.tier });
+  }
+
+  out.nothing = !out.reversible.length && !out.structural.length;
+  return out;
+}
+
+function adviceHtml(rows) {
+  const a = buildAdvice(rows);
+  const block = (title, body) => `<div class="step"><h4>${title}</h4>${body}</div>`;
+
+  const photo = a.photo.length ? block('Fix the photograph first',
+    `<p class="srcline">Everything below is measured from this image. These affect the numbers more than most real change would.</p>
+     ${a.photo.map((p) => `<div class="opt"><span class="what">${esc(p.what)}</span><span class="tags"><span class="badge">free</span></span></div>`).join('')}`) : '';
+
+  const rev = a.reversible.length ? block('Worth doing',
+    a.reversible.map((r) => `<div class="opt"><span class="what"><b>${esc(r.title)}.</b> ${esc(r.detail)}</span>
+      <span class="tags"><span class="badge">${esc(r.strength)}</span><span class="badge">reversible</span></span></div>`).join('')) : '';
+
+  const struct = a.structural.length ? block('Structural',
+    `<p class="srcline">Only measurements that are well outside a real distribution appear here. Nothing irreversible is listed from an aesthetic convention, and nothing at all from a deviation inside the measurement's own error.</p>
+     ${a.structural.map((x) => `
+       <div class="opt"><span class="what"><b>${esc(x.item.label)} &middot; ${esc(x.item.display)}</b> (${x.item.z > 0 ? '+' : ''}${x.item.z.toFixed(1)} SD)</span>
+         <span class="tags"><span class="badge t-${esc(x.tier)}">${esc(x.tier)}</span></span></div>
+       ${x.opts.map((o) => `<div class="opt" style="padding-left:2em"><span class="what">${esc(o.what || o.label || '')}</span>
+         <span class="tags"><span class="badge">${esc(o.kind || '')}</span>${o.reversible === true ? '<span class="badge">reversible</span>' : o.reversible === 'partial' ? '<span class="badge">partly reversible</span>' : '<span class="badge t-folk">permanent</span>'}</span></div>`).join('')}`).join('')}`) : '';
+
+  const nothing = a.nothing ? block('Nothing structural to do',
+    `<p>No measurement on this face sits far enough outside a real distribution to act on. That is the ordinary result and it is the honest one: most faces are unremarkable on most measurements, and the things that would actually change how this face reads are not in the list below — they are sleep, sun protection, weight, grooming, and the photograph itself.</p>
+     <p class="srcline">A tool that always finds something to sell you is not measuring more carefully than this one. It is deciding in advance that the answer is yes.</p>`) : '';
+
+  return `<div class="section">
+    <h3>What to do</h3>
+    ${photo}${rev}${struct}${nothing}
+    <p class="srcline">${esc(PROTOCOL_CAVEAT?.short || PROTOCOL_CAVEAT?.text || '')}</p>
+  </div>`;
 }
 
 /** Composites — averageness and dimorphism. Neither is scored, so neither gets
@@ -807,6 +915,17 @@ const RECOMMENDABLE = {
   chinHeight: 'philtrumOverChin',
 };
 
+// What has to be true before a slider is allowed to move on its own.
+//
+// The first version of this failed all three tests and produced nonsense: it
+// lengthened a chin to close a philtrum-ratio gap of 0.011 (z = 0.11, noise),
+// and two of its three suggestions chased Renaissance canons that the rest of
+// the report exists to argue are not targets. A recommendation is only
+// defensible when the reference is a measured distribution, the deviation is
+// real, and the reference actually applies to this person.
+const REC_MIN_Z = 1.5;          // below this the "deviation" is inside the noise
+const REC_TIERS = ['anthro'];   // a drawing canon is not a target to solve toward
+
 /** Where a reference wants the value to sit. */
 function refTarget(id) {
   const entry = NORMS[id];
@@ -840,15 +959,35 @@ function recommendSettings() {
   const out = {}, notes = [];
   const un = res.aligned.unrotate;
 
+  const skipped = [];
   for (const [ctlId, metricId] of Object.entries(RECOMMENDABLE)) {
     const spec = MORPH_CONTROLS.find((c) => c.id === ctlId);
     const item = byId[metricId];
-    if (!spec || !item) continue;
-    if (item.status === 'typical') continue;                 // nothing to close
+    const entry = NORMS[metricId];
+    if (!spec || !item || !entry) continue;
     if (item.status === 'unscored' || item.uncalibrated
         || item.ancestrySensitive || item.provisional) continue;
-    const target = refTarget(metricId);
-    if (!Number.isFinite(target) || !Number.isFinite(item.value)) continue;
+
+    if (!REC_TIERS.includes(entry.tier)) {
+      if (item.status !== 'typical') skipped.push(`${item.label} is outside its band, but that band is an aesthetic convention rather than a measured distribution, so nothing is solved toward it.`);
+      continue;
+    }
+    // A sex-specific norm cannot be applied to an unstated sex. The fallback
+    // silently used the male column, which is how a woman would have been
+    // handed a man's brow height.
+    if (entry.male && entry.female && !S.sex) {
+      skipped.push(`${item.label} has separate male and female references and no sex is set, so it is left alone. Choose one above if you want it considered.`);
+      continue;
+    }
+    if (!Number.isFinite(item.z) || Math.abs(item.z) < REC_MIN_Z) {
+      if (item.status !== 'typical') skipped.push(`${item.label} sits ${Math.abs(item.z || 0).toFixed(1)} SD out, inside the range where the measurement's own error lives. Left alone.`);
+      continue;
+    }
+
+    // Aim at the near edge of the typical band, not the population mean. Closing
+    // all the way to the mean asserts the mean is where this face should be.
+    const ref = refFor(entry, S.sex || null);
+    const target = item.z > 0 ? ref.mean + ref.sd : ref.mean - ref.sd;
 
     let best = { v: 0, err: Math.abs(item.value - target) };
     const steps = 16;
@@ -864,12 +1003,22 @@ function recommendSettings() {
       const err = Math.abs(got - target);
       if (err < best.err) best = { v, err };
     }
-    if (best.v !== 0) {
-      const q = Math.round(best.v / spec.step) * spec.step;
-      out[ctlId] = +q.toFixed(2);
-      notes.push(`${spec.label}: ${q > 0 ? '+' : ''}${+q.toFixed(1)}${spec.unit || ''} to bring ${item.label.toLowerCase()} from ${item.display} toward ${fmtValue(metricId, target, item.unit)}.`);
+    if (best.v === 0) continue;
+
+    // A solution sitting on the slider's limit means the control could not get
+    // there. Applying the maximum anyway looks like a confident recommendation
+    // and is really just the solver giving up at the wall.
+    const atRail = Math.abs(best.v - spec.min) < 1e-6 || Math.abs(best.v - spec.max) < 1e-6;
+    if (atRail) {
+      skipped.push(`${item.label} would need more than this slider can give, so it is left alone rather than pinned to the end of its range.`);
+      continue;
     }
+
+    const q = Math.round(best.v / spec.step) * spec.step;
+    out[ctlId] = +q.toFixed(2);
+    notes.push(`${spec.label}: ${q > 0 ? '+' : ''}${+q.toFixed(1)}${spec.unit || ''}, which moves ${item.label.toLowerCase()} from ${item.display} (${item.z > 0 ? '+' : ''}${item.z.toFixed(1)} SD) to the near edge of the typical band rather than to the mean.`);
   }
+  notes.push(...skipped);
   return { settings: out, notes };
 }
 
@@ -966,13 +1115,24 @@ $('#morphRecommend').addEventListener('click', async () => {
   const btn = $('#morphRecommend');
   const label = btn.textContent;
   btn.disabled = true; btn.textContent = 'Solving\u2026';
-  await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
+  // A plain timeout, not requestAnimationFrame: rAF does not fire when the page
+  // is not painting (a background tab, an offscreen pane), and the handler then
+  // waits forever with the button stuck reading "Solving…".
+  await new Promise((r) => setTimeout(r, 0));
   let settings, notes;
   try { ({ settings, notes } = recommendSettings()); }
   finally { btn.disabled = false; btn.textContent = label; }
   const ids = Object.keys(settings);
+  const host = $('#recNotes');
   if (!ids.length) {
-    toast('Nothing to recommend: every measurement a slider can act on is already inside its reference.', 5000);
+    // Declining is a result, not a non-event. Show the reasoning, or this reads
+    // as a broken button.
+    if (host) {
+      host.innerHTML = `<div class="note info"><b>Nothing to recommend</b>
+        No measurement a slider can act on is both outside a measured distribution and far enough out to be worth moving.
+        ${notes.length ? `<br><br>${notes.map((n) => esc(n)).join('<br>')}` : ''}
+        <br><br>A slider is only solved when its reference is a real distribution rather than a drawing canon, the deviation is at least ${REC_MIN_Z} SD, and the reference applies to the stated sex. That rules most things out on most faces, which is the correct answer rather than a disappointing one.</div>`;
+    }
     return;
   }
   S.morph.settings = { ...settings };
@@ -986,7 +1146,6 @@ $('#morphRecommend').addEventListener('click', async () => {
       amt.classList.toggle('on', v !== 0);
     }
   });
-  const host = $('#recNotes');
   if (host) {
     host.innerHTML = `<div class="note info"><b>Where these came from</b>
       Each slider was solved for the value that brings its own measurement closest to the reference, by sampling the slider's range and re-running the real measurement on the moved landmarks. Only measurements that are actually scored and actually outside their range are touched &mdash; ${ids.length} of ${MORPH_CONTROLS.length} here.
