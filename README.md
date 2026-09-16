@@ -60,6 +60,42 @@ exactly where a lateral view lives.
 or pigmented, regional erythema against the facial median, tone evenness, and
 ITA. Compares regions within one photo; it does not claim absolute colour.
 
+**Appearance markers** — brow density against a local forehead reference so it
+works across skin tones, lip smoothness and vermilion border sharpness, iris
+colour, and skin texture energy. None of these has a published population norm,
+so none is scored. The two 0–100 scales were calibrated against the validation
+set so its median face sits at 50; before that calibration fifteen of eighteen
+portraits scored below 2 and the measure could not discriminate at all.
+
+**Composites** — averageness as Procrustes distance to a mean shape computed by
+generalised Procrustes superimposition over the validation set, and a sexual
+dimorphism projection built only from measurements that actually have separate
+male and female references. Neither is scored: averageness has a real research
+basis, but eighteen faces is not a population.
+
+**Preview** — a piecewise-affine warp of the photograph toward an adjusted
+landmark configuration, with a before/after split. Eight controls: thirds, mouth
+position, canthal tilt, brow height, alar width, lip fullness, chin height, jaw
+width. This is deliberately not an AI projection. It moves the pixels that are
+there, so it cannot add tissue, cannot relight a changed surface, and goes
+rubbery past small adjustments — which is why the ranges are clamped.
+
+**History** — snapshots stored locally, with a diff between any two. This is the
+most defensible thing in the tool: measuring the same face twice cancels the
+systematic biases that wreck comparison against a population. The landmark
+offsets, the ~8% millimetre bias and the European reference samples all subtract
+out of a difference. Changes below the measurement's own noise floor are greyed
+rather than reported, and pose difference between the two photographs is shown
+alongside, because head rotation moves these numbers more than most real change
+does. Photographs are never stored, only the numbers.
+
+**What would move it** — each actionable finding mapped to the category of
+intervention that would change it, with an evidence grade and a citation, how
+reversible it is and over what timescale. No products, no brands, no prices, no
+month-by-month schedule: there is no basis for any of those, and a confident
+price beside an invented recommendation is the exact failure this tool exists to
+avoid.
+
 ## What makes it different from the paid versions
 
 Every reference value was checked against the primary literature, and every
@@ -131,6 +167,12 @@ src/norms.js        reference data, evidence tiers, sources
 src/skin.js         CIELAB regional colourimetry
 src/render.js       canvas overlay
 src/report.js       grouping and interpretation
+src/texture.js      appearance markers (brow, lip, iris, skin texture)
+src/composite.js    averageness and sexual dimorphism
+src/mean-shape.js   Procrustes mean over the validation set
+src/morph.js        piecewise-affine warp preview
+src/history.js      local snapshots and diffing
+src/protocol.js     intervention catalogue with evidence grades
 src/method.js       methodology page
 src/app.js          orchestration
 vendor/             MediaPipe runtime + EB Garamond

@@ -15,6 +15,8 @@
   <nav class="modes" role="tablist">
     <button class="mode is-on" data-mode="front" role="tab">Frontal</button>
     <button class="mode" data-mode="profile" role="tab">Profile</button>
+    <button class="mode" data-mode="preview" role="tab">Preview</button>
+    <button class="mode" data-mode="history" role="tab">History</button>
     <button class="mode" data-mode="method" role="tab">Method</button>
   </nav>
   <div class="topright">
@@ -89,6 +91,33 @@
     <aside class="report" id="preport">
       <div class="empty">Load a profile photo to begin.</div>
     </aside>
+  </section>
+
+  <!-- ============ PREVIEW (geometric morph) ============ -->
+  <section class="pane" id="pane-preview" hidden>
+    <div class="stage">
+      <div class="empty" id="previewEmpty">Analyse a frontal photo first — the preview warps that image.</div>
+      <div class="viewer" id="previewViewer" hidden>
+        <div class="canvaswrap morphwrap" id="morphwrap">
+          <canvas id="morphCanvas"></canvas>
+          <div class="morphhandle" id="morphHandle"><span></span></div>
+        </div>
+        <div class="stagefoot">
+          <span class="label">Before</span>
+          <input type="range" id="morphSplit" min="0" max="100" value="50" aria-label="Before / after split">
+          <span class="label">After</span>
+          <button class="btn ghost sm" id="morphReset">Reset all</button>
+        </div>
+      </div>
+    </div>
+    <aside class="report" id="previewPanel">
+      <div class="empty">Nothing to adjust yet.</div>
+    </aside>
+  </section>
+
+  <!-- ============ HISTORY ============ -->
+  <section class="pane solo" id="pane-history" hidden>
+    <div class="prose historypane" id="historyPanel"></div>
   </section>
 
   <!-- ============ METHOD ============ -->

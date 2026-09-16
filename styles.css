@@ -644,3 +644,119 @@ main { max-width: var(--measure-wide); margin: 0 auto; }
   .report { border: 0; }
   .detail { display: block !important; background: none; }
 }
+
+/* ============================================================
+   Preview — geometric morph
+   ============================================================ */
+.morphwrap { background: var(--color-bg-alt); }
+.morphwrap canvas { position: static; display: block; max-width: 100%; height: auto; }
+.morphhandle {
+  position: absolute; top: 0; bottom: 0; width: 1px;
+  background: var(--color-fg); pointer-events: none; opacity: .7;
+}
+.morphhandle span {
+  position: absolute; top: 50%; left: 50%;
+  width: 26px; height: 26px; margin: -13px 0 0 -13px;
+  border: 1px solid var(--color-fg); border-radius: 50%;
+  background: var(--color-scrim);
+}
+input[type="range"] {
+  -webkit-appearance: none; appearance: none;
+  background: transparent; height: 18px; cursor: pointer;
+}
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 1px; background: var(--color-border-hover);
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 11px; height: 11px; margin-top: -5px; border-radius: 50%;
+  background: var(--color-bg); border: 1px solid var(--color-fg);
+}
+input[type="range"]:hover::-webkit-slider-thumb { background: var(--color-fg); }
+#morphSplit { width: clamp(8rem, 24vw, 16rem); }
+
+.ctl { padding: .55em 0; border-bottom: 1px solid var(--color-border); }
+.ctlhead {
+  display: flex; justify-content: space-between; align-items: baseline;
+  gap: 1em; font-size: var(--text-small);
+}
+.ctl .amt {
+  font-variant-numeric: lining-nums tabular-nums;
+  color: var(--color-faint); font-size: var(--text-micro);
+}
+.ctl .amt.on { color: var(--color-link); }
+.ctl input[type="range"] { width: 100%; display: block; margin-top: .15em; }
+.ctl p {
+  margin: .1em 0 0; font-size: var(--text-micro);
+  color: var(--color-faint); font-style: italic; text-wrap: pretty;
+}
+
+/* ============================================================
+   History
+   ============================================================ */
+.historypane { max-width: 46rem; text-align: left; hyphens: none; }
+.snaplist { margin: var(--space-sm) 0; }
+.snap {
+  display: grid; grid-template-columns: auto 1fr auto auto;
+  gap: .8em; align-items: baseline;
+  padding: .55em 0; border-bottom: 1px solid var(--color-border);
+  font-size: var(--text-small);
+}
+.snap input[type="checkbox"] { accent-color: var(--color-link); }
+.snap .when { color: var(--color-faint); font-variant-numeric: lining-nums tabular-nums; font-size: var(--text-micro); }
+.snap .tally { color: var(--color-faint); font-size: var(--text-micro); font-variant-numeric: lining-nums tabular-nums; }
+.snap button {
+  background: none; border: 0; padding: 0; cursor: pointer;
+  color: var(--color-faint); font-size: var(--text-micro);
+  border-bottom: 1px solid transparent;
+}
+.snap button:hover { color: var(--color-failed); border-bottom-color: currentColor; }
+
+.difftable { width: 100%; border-collapse: collapse; font-size: var(--text-small); margin: var(--space-sm) 0; }
+.difftable th, .difftable td {
+  text-align: left; padding: .45em .7em .45em 0;
+  border-bottom: 1px solid var(--color-border);
+  font-variant-numeric: lining-nums tabular-nums;
+}
+.difftable th {
+  color: var(--color-muted); font-weight: 400; font-size: .72rem;
+  letter-spacing: .1em; text-transform: uppercase; font-variant-numeric: normal;
+}
+.difftable td:first-child { font-variant-numeric: normal; }
+.difftable .up { color: var(--color-passed); }
+.difftable .down { color: var(--color-failed); }
+.difftable .flat { color: var(--color-faint); }
+.difftable tr.quiet td { color: var(--color-faint); }
+
+/* ============================================================
+   Composites, texture and protocol
+   ============================================================ */
+.meter { margin: .5em 0 .2em; }
+.meter .track {
+  position: relative; height: 3px; background: var(--color-border);
+}
+.meter .track i { position: absolute; top: 0; bottom: 0; background: var(--wash-passed); }
+.meter .track u { position: absolute; top: -4px; width: 1px; height: 11px; background: var(--color-fg); }
+.meter .ends {
+  display: flex; justify-content: space-between;
+  font-size: .7rem; color: var(--color-faint); margin-top: .3em;
+}
+.contribs { margin: .5em 0 0; font-size: var(--text-micro); color: var(--color-faint); }
+.contribs div {
+  display: flex; justify-content: space-between; gap: 1em;
+  padding: .15em 0; font-variant-numeric: lining-nums tabular-nums;
+}
+
+.step { padding: .6em 0; border-bottom: 1px solid var(--color-border); }
+.step h4 {
+  font-size: var(--text-micro); letter-spacing: .12em;
+  text-transform: uppercase; color: var(--color-fg); margin-bottom: .2em;
+}
+.opt {
+  display: grid; grid-template-columns: 1fr auto; gap: .3em 1em;
+  padding: .35em 0 .35em 1em; font-size: var(--text-smaller);
+  color: var(--color-muted); border-top: 1px solid var(--color-border);
+}
+.opt .what { text-wrap: pretty; }
+.opt .tags { display: flex; gap: .35em; flex-wrap: wrap; justify-content: flex-end; }
+.opt .ev { font-size: .7rem; color: var(--color-faint); grid-column: 1 / -1; font-style: italic; }

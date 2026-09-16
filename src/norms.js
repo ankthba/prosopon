@@ -244,7 +244,7 @@ export const NORMS = {
     all: rg(0, 3.0),
     uncalibrated: true,
     text: 'RMS mismatch between each landmark and its mirror image across the fitted midline. NOT SCORED against a population: the measurement is dominated by head yaw rather than by the face, and across the 18 validation portraits it ran 0.9–14.2mm with a median of 4.8mm, against a population mean near 1.2mm. Everyone is asymmetric, and observers generally cannot detect differences under about 3mm. Read it against your own photographs taken at the same angle, and only trust it when yaw is under about 3°.',
-    source: 'Derived; detection threshold from Chu EA, Farrag TY, Ishii LE, Byrne PJ. Arch Facial Plast Surg 2014;16(2):97–101',
+    source: 'Derived; detection threshold from Chu EA, Farrag TY, Ishii LE, Byrne PJ. Threshold of visual perception of facial asymmetry in a facial paralysis model. Arch Facial Plast Surg 2011;13(1):14–19 (PMID 21242426)',
     mutability: 'softTissue',
   },
 

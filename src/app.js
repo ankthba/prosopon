@@ -3,10 +3,15 @@ import { buildPoints, FACE_OVAL_ORDERED } from './landmarks.js';
 import { computeFrontal, qualityCheck } from './metrics-front.js';
 import { analyseSkin, itaClass } from './skin.js';
 import { renderOverlay, LAYERS, DRAWERS } from './render.js';
-import { buildRows, buildProfileRows, summarise, byMutability, fmtValue, PROFILE_LABELS } from './report.js';
+import { buildRows, buildProfileRows, summarise, byMutability, fmtValue, PROFILE_LABELS, LABELS } from './report.js';
 import { PROFILE_POINTS, computeProfile, profileQuality } from './metrics-profile.js';
 import { NORMS, PROFILE_NORMS, refFor, MUTABILITY } from './norms.js';
 import { METHOD_HTML } from './method.js';
+import { analyseTexture } from './texture.js';
+import { summariseComposites } from './composite.js';
+import { buildProtocol, PROTOCOL_CAVEAT, EVIDENCE_GRADES } from './protocol.js';
+import { MORPH_CONTROLS, targetLandmarks, buildTriangulation, renderMorph } from './morph.js';
+import * as History from './history.js';
 import { dist } from './geom.js';
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -20,6 +25,8 @@ const S = {
     layers: { outline: true, midline: false, thirds: false, fifths: false, mesh: false, symmetry: false, skin: false },
     highlight: null },
   profile: { img: null, pts: {}, next: 0, res: null },
+  morph: { settings: {}, tris: null, split: 50 },
+  history: { pick: [] },
 };
 
 function toast(msg, ms = 2600) {
@@ -46,7 +53,11 @@ $$('.mode').forEach((b) => b.addEventListener('click', () => {
   const m = b.dataset.mode;
   $('#pane-front').hidden = m !== 'front';
   $('#pane-profile').hidden = m !== 'profile';
+  $('#pane-preview').hidden = m !== 'preview';
+  $('#pane-history').hidden = m !== 'history';
   $('#pane-method').hidden = m !== 'method';
+  if (m === 'preview') drawPreviewPane();
+  if (m === 'history') drawHistoryPane();
 }));
 
 $('#sex').addEventListener('change', (e) => {
@@ -126,6 +137,11 @@ async function analyseFrontal() {
   S.front.ctx = ctx; S.front.matrix = matrix;
   recompute();
   S.front.skin = analyseSkin(ctx, img);
+  try { S.front.texture = analyseTexture(ctx, img); }
+  catch (e) { S.front.texture = null; S.front.textureError = String(e); }
+  try { S.front.composites = summariseComposites(S.front.res, S.sex || null); }
+  catch (e) { S.front.composites = null; }
+  S.morph.settings = {}; S.morph.tris = null;
   $('#export').disabled = false;
   drawReport();
   layoutCanvas();
@@ -327,7 +343,10 @@ function drawReport() {
       ${g.note ? `<p class="gnote">${esc(g.note)}</p>` : ''}
       ${g.items.map(rowHtml).join('')}
     </div>`).join('')}
+    ${compositeHtml()}
+    ${textureHtml()}
     ${skinHtml()}
+    ${protocolHtml(rows)}
     <p class="fineprint">
       These are measurements of geometry, not judgements of a person. Reference ranges come from specific study populations, chiefly North American and European. Nothing here is a medical opinion.
     </p>`;
@@ -346,6 +365,123 @@ function drawReport() {
 function repaint() {
   if (!S.front.R) return;
   renderOverlay($('#overlay'), S.front.R, { layers: S.front.layers, highlight: S.front.highlight });
+}
+
+/** Composites — averageness and dimorphism. Neither is scored, so neither gets
+ *  a status dot; they render as figures with their basis attached. */
+function compositeHtml() {
+  const c = S.front.composites;
+  if (!c) return '';
+  const av = c.averageness, dm = c.dimorphism;
+  const meter = (frac, leftLab, rightLab) => `
+    <div class="meter"><div class="track">
+      <u style="left:calc(${clampPct(frac)}% - .5px)"></u>
+    </div><div class="ends"><span>${esc(leftLab)}</span><span>${esc(rightLab)}</span></div></div>`;
+
+  const avHtml = Number.isFinite(av?.distance) ? `
+    <div class="finding">
+      <b>Averageness</b>
+      <p>Procrustes distance ${av.distance.toFixed(4)} from the reference mean shape${
+        Number.isFinite(av.z) ? `, ${av.z >= 0 ? '+' : ''}${av.z.toFixed(1)} SD against that set` : ''}.
+      ${esc(av.interpretation || '')}</p>
+      ${meter(Number.isFinite(av.z) ? (av.z + 3) / 6 * 100 : 50, 'closer to the mean', 'further from it')}
+      <p class="srcline">${esc(av.meta?.basis || '')}</p>
+    </div>` : '';
+
+  const contribs = (dm?.contributions || []).filter((x) => Number.isFinite(x.z));
+  const dmHtml = Number.isFinite(dm?.score) ? `
+    <div class="finding">
+      <b>Sexual dimorphism</b>
+      <p>${esc(dm.direction || '')} ${esc(dm.note || '')}</p>
+      ${meter((dm.score + 3) / 6 * 100, 'female reference', 'male reference')}
+      ${contribs.length ? `<div class="contribs">${contribs.map((x) =>
+        `<div><span>${esc(x.label || x.id)}</span><span>${x.z >= 0 ? '+' : ''}${x.z.toFixed(2)}</span></div>`).join('')}</div>` : ''}
+      <p class="srcline">Confidence: ${esc(dm.confidence?.label || 'unknown')}.</p>
+    </div>` : `<div class="finding"><b>Sexual dimorphism</b><p>${esc(dm?.note || 'Not computed.')}</p></div>`;
+
+  return `<div class="section">
+    <h3>Composites</h3>
+    <p class="gnote">Neither of these is scored. They are positions on an axis, not verdicts, and the reference behind both is the eighteen-portrait validation set rather than a population.</p>
+    ${avHtml}${dmHtml}
+    ${(c.caveats || []).map((x) => `<p class="srcline">${esc(x)}</p>`).join('')}
+  </div>`;
+}
+
+const clampPct = (v) => Math.max(0, Math.min(100, v));
+
+/** Appearance markers. None has a published norm, so none is scored. */
+function textureHtml() {
+  const t = S.front.texture;
+  if (!t) return S.front.textureError
+    ? `<div class="section"><h3>Appearance</h3><div class="note warn"><b>Not computed</b>${esc(S.front.textureError)}</div></div>` : '';
+  const num = (v, d = 1, suf = '') => (Number.isFinite(v) ? `${v.toFixed(d)}${suf}` : '—');
+  const brow = (side) => {
+    const b = t.brows?.[side];
+    if (!b) return '';
+    const name = side === 'R' ? 'right' : 'left';
+    if (!b.ok) {
+      return `<div class="opt"><span class="what">Brow density (${name})</span><span class="tags">—</span>
+        <span class="ev">${b.refObstructed
+          ? 'The forehead reference patch was too dark to be skin — usually a fringe, a hat or a shadow. Not measurable on this photo.'
+          : 'Too few usable pixels to measure.'}</span></div>`;
+    }
+    return `<div class="opt"><span class="what">Brow density (${name})</span>
+      <span class="tags">${num(b.coveredPct, 0, '%')}</span>
+      <span class="ev">Hair covers ${num(b.coveredPct, 0, '%')} of the brow outline, separated from skin at L* ${num(b.thresholdL)} against a forehead reference of L* ${num(b.skinL)}.</span></div>`;
+  };
+  const iris = (side) => {
+    const i = t.irises?.[side];
+    if (!i || !i.ok) return '';
+    const name = side === 'R' ? 'right' : 'left';
+    return `<div class="opt"><span class="what">Iris (${name})
+      <span class="sw" style="display:inline-block;width:.8em;height:.8em;border-radius:50%;background:${esc(i.hex || '#000')};vertical-align:middle;margin-left:.4em"></span></span>
+      <span class="tags">${esc(i.category || '—')}</span>
+      <span class="ev">L* ${num(i.L)}, chroma ${num(i.chroma)}, hue ${num(i.hue, 0)}°, ${i.n} px sampled.${
+        i.category === 'indeterminate' ? ' Too dark and too desaturated to call a hue — a small, lidded or shadowed iris lands here.' : ''}</span></div>`;
+  };
+  return `<div class="section">
+    <h3>Appearance markers</h3>
+    <p class="gnote">${esc((t.warnings || [])[0] || '')}</p>
+    ${brow('R')}${brow('L')}
+    <div class="opt"><span class="what">Lip smoothness</span>
+      <span class="tags">${num(t.lips?.smoothness, 0)}</span>
+      <span class="ev">Scale calibrated so the reference set's median face sits at 50 and the set spans roughly 37–69; higher is smoother. Border sharpness ${num(t.lips?.borderSharpness, 2)} L* per 1% of eye spacing.</span></div>
+    <div class="opt"><span class="what">Skin evenness</span>
+      <span class="tags">${num(t.skin?.evennessPct, 0)}</span>
+      <span class="ev">Residual SD ${num(t.skin?.textureEnergy, 2)} L* after a face-scaled blur, over cheeks and forehead. Conflates real texture with sensor noise, JPEG artefacts and any smoothing the camera applied.</span></div>
+    ${iris('R')}${iris('L')}
+    ${(t.warnings || []).slice(1).map((w) => `<p class="srcline">${esc(w)}</p>`).join('')}
+  </div>`;
+}
+
+/** What could actually move a finding. Categories and evidence, never products. */
+function protocolHtml(rows) {
+  let items = [];
+  try { items = buildProtocol(rows, { minStatus: 'slight' }); } catch (e) { return ''; }
+  if (!items.length) return '';
+  const grade = (g) => EVIDENCE_GRADES?.[g]?.label || g || '';
+  return `<div class="section">
+    <h3>What would move it</h3>
+    <p class="gnote">${esc(PROTOCOL_CAVEAT?.short || PROTOCOL_CAVEAT?.text || '')}</p>
+    ${items.map((it) => `
+      <div class="step">
+        <h4>${esc(it.label)} &middot; ${esc(it.display)}</h4>
+        ${it.summary ? `<p class="srcline">${esc(it.summary)}</p>` : ''}
+        ${it.options.slice(0, 4).map((o) => `
+          <div class="opt">
+            <span class="what">${esc(o.what || o.label || '')}</span>
+            <span class="tags">
+              <span class="badge">${esc(o.kind || '')}</span>
+              ${o.reversible === true ? '<span class="badge">reversible</span>'
+                : o.reversible === 'partial' ? '<span class="badge">partly reversible</span>'
+                : '<span class="badge t-folk">permanent</span>'}
+            </span>
+            <span class="ev">${esc(grade(o.evidence?.grade))}${o.evidence?.citation ? ` &mdash; ${esc(o.evidence.citation)}` : ''}${
+              o.timescale ? ` &middot; ${esc(o.timescale)}` : ''}</span>
+          </div>`).join('')}
+      </div>`).join('')}
+    <p class="srcline">${esc(PROTOCOL_CAVEAT?.long || PROTOCOL_CAVEAT?.text || '')}</p>
+  </div>`;
 }
 
 function skinHtml() {
@@ -505,6 +641,245 @@ function computeAndDrawProfile() {
     d.hidden = !d.hidden; r.classList.toggle('open', !d.hidden);
   }));
 }
+
+// ============================ PREVIEW (morph) ============================
+//
+// A piecewise-affine warp of the actual photograph, not a prediction. It shows
+// what a proportion change would look like on these pixels; it cannot add
+// tissue that is not in the image, and it goes rubbery past small adjustments,
+// which is why the control ranges are clamped where they are.
+
+function drawPreviewPane() {
+  const ok = !!(S.front.res && S.front.img);
+  $('#previewEmpty').hidden = ok;
+  $('#previewViewer').hidden = !ok;
+  if (!ok) { $('#previewPanel').innerHTML = '<div class="empty">Analyse a frontal photo first.</div>'; return; }
+
+  $('#previewPanel').innerHTML = `
+    <div class="section">
+      <h3>Adjustments</h3>
+      <p class="gnote">Each slider moves landmarks and warps the photograph to follow. Nothing here predicts a surgical result, and none of these targets is a goal &mdash; they are the canons the report spends its time qualifying.</p>
+      ${MORPH_CONTROLS.map((c) => `
+        <div class="ctl">
+          <div class="ctlhead"><span>${esc(c.label)}</span>
+            <span class="amt" data-amt="${c.id}">0${esc(c.unit || '')}</span></div>
+          <input type="range" data-ctl="${c.id}" min="${c.min}" max="${c.max}"
+                 step="${c.step}" value="0" aria-label="${esc(c.label)}">
+          <p>${esc(c.hint)}</p>
+        </div>`).join('')}
+    </div>`;
+
+  $$('#previewPanel input[data-ctl]').forEach((el) => {
+    el.addEventListener('input', () => {
+      const id = el.dataset.ctl;
+      const v = parseFloat(el.value);
+      S.morph.settings[id] = v;
+      const spec = MORPH_CONTROLS.find((c) => c.id === id);
+      const amt = $(`#previewPanel [data-amt="${id}"]`);
+      amt.textContent = `${v > 0 ? '+' : ''}${v}${spec?.unit || ''}`;
+      amt.classList.toggle('on', v !== 0);
+      renderPreview();
+    });
+  });
+  renderPreview();
+}
+
+function renderPreview() {
+  const res = S.front.res, img = S.front.img;
+  if (!res || !img) return;
+  const cv = $('#morphCanvas');
+  const maxW = Math.min(img.naturalWidth, 900);
+  const k = maxW / img.naturalWidth;
+  cv.width = Math.round(img.naturalWidth * k);
+  cv.height = Math.round(img.naturalHeight * k);
+  const g = cv.getContext('2d');
+  g.clearRect(0, 0, cv.width, cv.height);
+
+  const srcAligned = res.aligned.P;
+  let dstAligned;
+  try { dstAligned = targetLandmarks(srcAligned, res, S.morph.settings); }
+  catch (e) { dstAligned = srcAligned; }
+
+  // Both sets live in the aligned frame; map back to image pixels to warp.
+  const un = res.aligned.unrotate;
+  const scalePt = (p) => ({ x: p.x * k, y: p.y * k });
+  const srcPts = srcAligned.map((p) => scalePt(un(p)));
+  const dstPts = dstAligned.map((p) => scalePt(un(p)));
+
+  if (!S.morph.tris) {
+    try { S.morph.tris = buildTriangulation(srcPts); } catch (e) { S.morph.tris = null; }
+  }
+  const changed = Object.values(S.morph.settings).some((v) => v);
+  if (!changed || !S.morph.tris) {
+    g.drawImage(img, 0, 0, cv.width, cv.height);
+  } else {
+    try { renderMorph(img, srcPts, dstPts, S.morph.tris, cv); }
+    catch (e) { g.drawImage(img, 0, 0, cv.width, cv.height); }
+  }
+
+  // Split view: redraw the original over the left portion.
+  const split = S.morph.split / 100;
+  if (changed && split > 0) {
+    g.save();
+    g.beginPath(); g.rect(0, 0, cv.width * split, cv.height); g.clip();
+    g.drawImage(img, 0, 0, cv.width, cv.height);
+    g.restore();
+  }
+  $('#morphHandle').style.left = `${S.morph.split}%`;
+  $('#morphHandle').hidden = !changed;
+}
+
+$('#morphSplit').addEventListener('input', (e) => {
+  S.morph.split = +e.target.value; renderPreview();
+});
+$('#morphReset').addEventListener('click', () => {
+  S.morph.settings = {};
+  $$('#previewPanel input[data-ctl]').forEach((el) => { el.value = 0; });
+  $$('#previewPanel .amt').forEach((el) => { el.textContent = '0'; el.classList.remove('on'); });
+  renderPreview();
+});
+
+// ============================ HISTORY ============================
+//
+// Comparing a face against its own earlier photographs cancels the systematic
+// biases that wreck comparison against a population: the landmark offsets, the
+// millimetre scale bias, the European reference samples. All of them subtract
+// out when the same pipeline measures the same person twice.
+
+function drawHistoryPane() {
+  const host = $('#historyPanel');
+  let snaps = [];
+  try { snaps = History.listSnapshots(); } catch (e) { snaps = []; }
+  const canSave = !!S.front.res;
+
+  host.innerHTML = `
+    <h2>History</h2>
+    <p>Measuring the same face twice cancels most of what makes a single reading
+    unreliable. The landmark offsets, the roughly 8% millimetre bias and the
+    European reference samples all subtract out of a difference, so change over
+    time is measurable even where an absolute value is not. Photographs are
+    never stored &mdash; only the numbers.</p>
+    <div class="stagefoot" style="justify-content:flex-start;margin:1.5rem 0">
+      <button class="btn" id="histSave"${canSave ? '' : ' disabled'}>Save current analysis</button>
+      <button class="btn ghost sm" id="histExport"${snaps.length ? '' : ' disabled'}>Export</button>
+      <button class="btn ghost sm" id="histImport">Import</button>
+      <input type="file" id="histFile" accept="application/json" hidden>
+    </div>
+    ${snaps.length ? `
+      <p class="gnote">Tick two to compare them.</p>
+      <div class="snaplist">${snaps.map((sn) => `
+        <label class="snap">
+          <input type="checkbox" data-snap="${esc(sn.id)}">
+          <span>${esc(sn.label || 'Untitled')}</span>
+          <span class="when">${new Date(sn.at).toISOString().slice(0, 10)}</span>
+          <button data-del="${esc(sn.id)}" title="Delete">remove</button>
+        </label>`).join('')}</div>
+      <div id="histDiff"></div>`
+      : '<p class="gnote">Nothing saved yet. Analyse a photo, then save it here.</p>'}`;
+
+  $('#histSave')?.addEventListener('click', () => {
+    const rows = buildRows(S.front.res, S.sex || null);
+    const sum = summarise(rows);
+    const label = prompt('Label for this snapshot', new Date().toISOString().slice(0, 10));
+    if (label === null) return;
+    try {
+      History.saveSnapshot({
+        label,
+        at: Date.now(),
+        sex: S.sex || null,
+        pose: S.front.res.pose,
+        scale: { mmPerPx: S.front.res.scale.mmPerPx },
+        tally: { typical: sum.typical.length, slight: sum.slight.length, notable: sum.notable.length },
+        metrics: Object.fromEntries(rows.flatMap((g) => g.items.map((i) => [i.id, i.value]))),
+      });
+      toast('Saved.'); drawHistoryPane();
+    } catch (e) { toast('Could not save: ' + e.message, 4000); }
+  });
+
+  $('#histExport')?.addEventListener('click', () => {
+    try {
+      const blob = new Blob([History.exportHistory()], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `prosopon-history-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+    } catch (e) { toast('Export failed.'); }
+  });
+  $('#histImport')?.addEventListener('click', () => $('#histFile').click());
+  $('#histFile')?.addEventListener('change', async (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    try {
+      const r = History.importHistory(await f.text(), { merge: true });
+      toast(`Imported ${r.added}, skipped ${r.skipped}.`); drawHistoryPane();
+    } catch (err) { toast('Import failed: ' + err.message, 4000); }
+  });
+
+  host.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', (ev) => {
+    ev.preventDefault();
+    try { History.deleteSnapshot(b.dataset.del); } catch (e) {}
+    drawHistoryPane();
+  }));
+
+  host.querySelectorAll('[data-snap]').forEach((cb) => cb.addEventListener('change', () => {
+    const picked = [...host.querySelectorAll('[data-snap]:checked')].map((x) => x.dataset.snap);
+    if (picked.length > 2) { cb.checked = false; return; }
+    // The list renders newest first, so DOM order would hand diffSnapshots the
+    // later photograph as the starting point and report every change backwards,
+    // over a negative number of days. Order the pair by time, not by position.
+    const at = Object.fromEntries(snaps.map((sn) => [sn.id, sn.at]));
+    picked.sort((a, b) => (at[a] || 0) - (at[b] || 0));
+    renderDiff(picked);
+  }));
+}
+
+function renderDiff(picked) {
+  const host = $('#histDiff');
+  if (!host) return;
+  if (picked.length !== 2) { host.innerHTML = ''; return; }
+  let d;
+  try { d = History.diffSnapshots(picked[0], picked[1]); }
+  catch (e) { host.innerHTML = `<div class="note warn"><b>Could not compare</b>${esc(e.message)}</div>`; return; }
+  if (!d || !d.changes) { host.innerHTML = ''; return; }
+
+  const sum = d.summary || {};
+  const pose = sum.pose || {};
+  const poseLine = sum.poseKnown
+    ? `yaw ${fmtNum(pose.yaw)}&deg; &middot; pitch ${fmtNum(pose.pitch)}&deg; &middot; roll ${fmtNum(pose.roll)}&deg;`
+    : 'pose not recorded for one of these';
+
+  const notes = [];
+  if (sum.poseSuspect) {
+    notes.push(`<div class="note warn"><b>Pose differs</b>The two photographs were not taken at the same head angle (${poseLine}). Head rotation moves these numbers more than most real change does, so treat the differences below as an upper bound.</div>`);
+  }
+  if (sum.scaleSuspect) {
+    notes.push('<div class="note warn"><b>Scale differs</b>The millimetre calibration changed between the two photographs, so every absolute length below has shifted with it. The ratios are unaffected.</div>');
+  }
+  if (sum.sexChanged) {
+    notes.push('<div class="note info"><b>Reference changed</b>These two were scored against different sex norms, so the verdicts are not directly comparable. The raw values still are.</div>');
+  }
+
+  host.innerHTML = `
+    <h3 style="margin-top:2rem">Change over ${d.days} day${d.days === 1 ? '' : 's'}</h3>
+    ${notes.join('')}
+    <table class="difftable">
+      <tr><th>Measurement</th><th>Before</th><th>After</th><th>Change</th></tr>
+      ${d.changes.map((c) => `
+        <tr class="${c.meaningful ? '' : 'quiet'}">
+          <td>${esc(LABELS[c.id] || PROFILE_LABELS[c.id] || c.id)}</td>
+          <td>${fmtNum(c.from)}</td>
+          <td>${fmtNum(c.to)}</td>
+          <td class="${c.delta > 0 ? 'up' : c.delta < 0 ? 'down' : 'flat'}">${
+            c.delta > 0 ? '+' : ''}${fmtNum(c.delta)}${
+            Number.isFinite(c.sd) ? ` (${c.sd >= 0 ? '+' : ''}${c.sd.toFixed(1)} SD)` : ''}</td>
+        </tr>`).join('')}
+    </table>
+    <p class="srcline">
+      ${sum.compared} measurement${sum.compared === 1 ? '' : 's'} compared, ${sum.meaningful} of them moved further than the measurement's own noise floor. Rows in grey did not, and should be read as unchanged.
+      Pose difference: ${poseLine}.
+    </p>`;
+}
+
+const fmtNum = (v) => (Number.isFinite(v) ? (Math.abs(v) >= 100 ? v.toFixed(0) : v.toFixed(2)) : '—');
 
 // ============================ EXPORT ============================
 $('#export').addEventListener('click', () => {

@@ -69,6 +69,8 @@ export const METHOD_HTML = `
 
 <p>What survives is ten scored measurements, of which nine are counted in the summary. Across the eighteen faces they now average 5.4 typical, 2.9 slightly off and 0.6 well outside per face, and no individual measurement flags a majority of the set. Canthal tilt, which is the most-quoted number in this whole genre, flags nobody: its median across the set is 4.3&deg;, against a published 4.0&ndash;5.8&deg;.</p>
 
+<div class="callout"><p><b>One correction worth recording.</b> The audit described above existed to catch fabricated citations, and it introduced one: the asymmetry detection threshold was credited to a Chu et al. paper in <i>Arch Facial Plast Surg</i> 2014;16(2):97&ndash;101, which does not exist &mdash; that search returns nothing on PubMed. The real paper is Chu, Farrag, Ishii &amp; Byrne 2011;13(1):14&ndash;19, and the 3mm figure it supports is sound. It was caught only because a second, independent reviewer checked the citation rather than the number. A single pass of checking is not enough, including when the thing doing the checking is the thing that needs checking.</p></div>
+
 <h2>What is still weak</h2>
 <ul>
 <li>Eighteen faces is a validation set, not a study. It can show that a measurement fails on everyone; it cannot establish that one works.</li>
@@ -88,6 +90,37 @@ export const METHOD_HTML = `
 <tr><td><b>Aesthetic convention</b></td><td>Ideals like equal thirds and the facial fifths. These are Renaissance drawing canons. Farkas tested them against measured faces in 1985 and most are met by a minority of any population — attractive faces included.</td></tr>
 <tr><td><b>No clinical basis</b></td><td>Metrics that circulate online with confident numbers attached and no literature behind them. Shown because people ask for them, never scored, and never counted in any summary.</td></tr>
 </table>
+
+<h2>The parts that are not measurements</h2>
+<p>Four sections of the report are not morphometry, and each carries a different
+kind of uncertainty.</p>
+<p><b>Appearance markers</b> &mdash; brow density, lip smoothness, iris colour,
+skin texture &mdash; are real image measurements with no published population
+norm behind any of them, so none is scored. Their 0&ndash;100 scales are
+arbitrary by construction; they were calibrated so the validation set's median
+face reads 50, and outside that set the number means nothing. Iris colour in
+particular fails often and says so: a small, lidded or shadowed iris carries no
+usable hue, and on the validation portraits more eyes came back
+<i>indeterminate</i> than came back with a colour. That is the honest result at
+this iris size, and it is better than confidently calling a blue-grey eye brown,
+which is what the first version of the classifier did.</p>
+<p><b>Averageness</b> rests on one of the few genuinely replicated findings in
+this literature &mdash; averaged faces are rated more attractive &mdash; but the
+reference here is eighteen portraits, not a population, so it is reported as a
+distance and never scored. <b>Dimorphism</b> is a projection onto published sex
+differences, built only from measurements that actually have separate male and
+female references. It is not validated, and it is not a ranking.</p>
+<p><b>The preview</b> warps the photograph. It is not a prediction of anything.
+It moves the pixels already present, so it cannot add tissue, cannot relight a
+surface it has changed, and stops looking like a photograph past small
+adjustments. It is useful for seeing what a proportion actually does to a face,
+and useless as a surgical expectation.</p>
+<p><b>History</b> is the part to trust most. Every systematic error documented on
+this page &mdash; the 2mm canthal offset, the 8% millimetre bias, the European
+reference samples &mdash; subtracts out when the same pipeline measures the same
+person twice. Change is measurable where absolute values are not, which is why
+the diff greys anything below the measurement's noise floor and shows the pose
+difference beside it.</p>
 
 <h2>What this cannot do</h2>
 <ul>
@@ -117,7 +150,7 @@ export const METHOD_HTML = `
 <li>Ricketts RM. Esthetics, environment, and the law of lip relation. <i>Am J Orthod</i> 1968;54(4):272–89.</li>
 <li>Legan HL, Burstone CJ. Soft tissue cephalometric analysis for orthognathic surgery. <i>J Oral Surg</i> 1980;38(10):744–51.</li>
 <li>Lefevre CE et al. Telling facial metrics: facial width is associated with testosterone levels in men. <i>Evol Hum Behav</i> 2013;34(4):273–9.</li>
-<li>Chu EA et al. Perception of normal facial asymmetry. <i>JAMA Facial Plast Surg</i> 2014;16(2):97–101.</li>
+<li>Chu EA, Farrag TY, Ishii LE, Byrne PJ. Threshold of visual perception of facial asymmetry in a facial paralysis model. <i>Arch Facial Plast Surg</i> 2011;13(1):14–19.</li>
 <li>Chaudhary M, Khan A, Gupta M. Skin ageing: pathophysiology and current market treatment approaches. <i>Curr Aging Sci</i> 2020 — ITA background.</li>
 <li>Google MediaPipe Face Landmarker — model card and canonical face mesh topology.</li>
 </ul>
