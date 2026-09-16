@@ -1,0 +1,58 @@
+name: Deploy to Pages
+
+# The MediaPipe runtime (~21MB of wasm) and the landmark model are not committed
+# — setup.sh fetches them here at build time, so the repo stays small while the
+# deployed site is complete and needs no network at run time.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch runtime and model
+        run: ./setup.sh
+
+      - name: Verify the fetch actually produced what we expect
+        run: |
+          set -e
+          test -s models/face_landmarker.task
+          test -s vendor/tasks-vision/vision_bundle.mjs
+          test -s vendor/tasks-vision/wasm/vision_wasm_internal.wasm
+          echo "model $(stat -c%s models/face_landmarker.task) bytes"
+
+      - name: Stage the site
+        run: |
+          mkdir -p _site
+          cp -R index.html styles.css src vendor models _site/
+          # No README, no validation harness, no .git — just the app.
+          du -sh _site
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

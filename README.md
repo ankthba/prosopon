@@ -6,6 +6,8 @@ something that spends most of its effort on the gap between what is measured
 and what is seen.
 
 
+**<https://aniketh.net/prosopon>**
+
 Facial morphometrics from a photograph. Landmark measurements compared against
 published anthropometric reference ranges, with the provenance and the error
 bars attached to every number.
@@ -14,6 +16,11 @@ Runs entirely in the browser. The model, the fonts and the code are vendored —
 nothing is uploaded, and it works with the network off.
 
 ## Running it
+
+It is deployed at <https://aniketh.net/prosopon> — the page runs the model in
+your browser, so the photo never leaves your machine there either.
+
+To run it locally:
 
 ```bash
 ./setup.sh                  # fetches the MediaPipe runtime and the model
