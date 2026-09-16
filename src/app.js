@@ -701,10 +701,15 @@ function renderPreview() {
   catch (e) { dstAligned = srcAligned; }
 
   // Both sets live in the aligned frame; map back to image pixels to warp.
+  //
+  // These stay in the SOURCE image's own pixel coordinates. renderMorph scales
+  // its context by canvas.width / sourceWidth itself, so pre-scaling them to
+  // the canvas would apply that factor twice and land every triangle at k² of
+  // where it belongs — which reads as "the sliders do nothing", because the
+  // unwarped base image underneath is still correct.
   const un = res.aligned.unrotate;
-  const scalePt = (p) => ({ x: p.x * k, y: p.y * k });
-  const srcPts = srcAligned.map((p) => scalePt(un(p)));
-  const dstPts = dstAligned.map((p) => scalePt(un(p)));
+  const srcPts = srcAligned.map(un);
+  const dstPts = dstAligned.map(un);
 
   if (!S.morph.tris) {
     try { S.morph.tris = buildTriangulation(srcPts); } catch (e) { S.morph.tris = null; }
