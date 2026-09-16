@@ -42,6 +42,16 @@ limits of that set are in [`testdata/SOURCES.md`](testdata/SOURCES.md).
 
 ## What it does
 
+The report opens in **plain view**: a one-line answer, a short list of things
+actually worth doing, and nothing else. No z-scores, no standard deviations, no
+percentiles. The full measurement tables are one click away under *Every
+measurement*, and the choice is remembered.
+
+That split exists because the honest answer for most faces is short, and burying
+it under twelve sections of tables is how a measurement tool ends up answering a
+question nobody asked.
+
+
 **Frontal** — MediaPipe Face Landmarker places 478 points (468 face + two iris
 rings). Because the iris ring is detected, pixels convert to millimetres: the
 horizontal visible iris diameter is ~11.7mm with an SD near 0.5mm across adults,

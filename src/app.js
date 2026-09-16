@@ -21,6 +21,7 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&l
 let landmarker = null;
 const S = {
   sex: '',
+  view: (() => { try { return localStorage.getItem('prosopon.view') || 'plain'; } catch (e) { return 'plain'; } })(),
   front: { img: null, ctx: null, res: null, skin: null, issues: [], R: null, trichionY: null, matrix: null,
     layers: { outline: true, midline: false, thirds: false, fifths: false, mesh: false, symmetry: false, skin: false },
     highlight: null },
@@ -290,6 +291,142 @@ function rowHtml(item) {
   </div>`;
 }
 
+// ---------------------------------------------------------------------------
+// Plain view
+//
+// The report defaults to this. A page of z-scores answers a question almost
+// nobody arrived with, and burying the answer under twelve sections of tables
+// is how you get "it is a lot of stats but I want to know what to do". The
+// measurements are all still there, one click away, unchanged.
+//
+// Nothing here is a softened version of a different conclusion. It is the same
+// conclusion without the apparatus: no SD, no L*, no percentiles, no tiers.
+// ---------------------------------------------------------------------------
+
+/** Photo problems, said the way you would say them out loud. Anything whose
+ *  only audience is someone reading the Method page is dropped rather than
+ *  translated, because it is not actionable. */
+const PLAIN_QUALITY = {
+  yaw: 'Your head is turned to one side. Face the camera straight on.',
+  pitch: 'Your chin is raised or dropped. Put the camera at eye level — this one matters more than any of the others.',
+  res: 'The photo is fairly small, so the fine measurements are rough.',
+  scale: 'The eyes are too small in this photo to work out real sizes. Get closer, or use a bigger photo.',
+  'scale-low': 'The eyes are small in this photo, so sizes in millimetres are approximate.',
+  webcam: 'This was taken on a webcam, close up. A close wide lens makes a nose look bigger and a face narrower than they are. Shoot from a couple of metres away with the camera zoomed in.',
+  light: 'One side of your face is much brighter than the other. Re-shoot facing a window, or with light on both sides — otherwise shadow gets measured as skin.',
+};
+
+function plainReport(rows, sum) {
+  const q = S.front.issues || [];
+  const hardFail = q.filter((i) => i.level === 'fail');
+  const photoBits = [];
+  for (const i of q) {
+    if (i.level === 'info') continue;
+    const t = PLAIN_QUALITY[i.code];
+    if (t && !photoBits.includes(t)) photoBits.push(t);
+  }
+  if (S.front.source === 'camera' && !photoBits.includes(PLAIN_QUALITY.webcam)) photoBits.push(PLAIN_QUALITY.webcam);
+  const sk = S.front.skin;
+  if (sk && (sk.warnings || []).length && !photoBits.includes(PLAIN_QUALITY.light)) photoBits.push(PLAIN_QUALITY.light);
+
+  // --- the headline ---
+  let headline;
+  if (hardFail.length) {
+    headline = 'This photo cannot be measured properly. Fix the problems below and take it again — everything else would be guesswork until then.';
+  } else if (!sum.notable.length && !sum.slight.length) {
+    headline = 'Nothing about the proportions of this face measures as unusual.';
+  } else if (!sum.notable.length) {
+    headline = 'Nothing here stands out. A few measurements sit a little outside the average, which is true of almost everyone — being exactly average on everything would be the strange result.';
+  } else {
+    const names = sum.notable.slice(0, 3).map((i) => plainLabel(i.label));
+    headline = `${names.length === 1 ? 'One measurement stands out' : `${names.length} measurements stand out`}: ${listSentence(names)}. Outside the average does not mean worse — it means uncommon, and the average is not a target.`;
+  }
+
+  // --- what to do ---
+  const a = buildAdvice(rows);
+  const todo = [];
+  for (const t of photoBits) todo.push({ tag: 'free', text: t });
+  // Adjacent regions produce near-identical findings — nose tip and nasal
+  // dorsum are one red nose, not two problems. Collapse them into one line.
+  const reds = a.reversible.filter((r) => /redness/i.test(r.title));
+  const rest = a.reversible.filter((r) => !/redness/i.test(r.title));
+  for (const r of rest) todo.push({ tag: r.strength, text: `${r.title}. ${plainSkin(r.detail)}` });
+  if (reds.length) {
+    const where = listSentence(reds.map((r) => r.title.replace(/^Redness\s*[—-]\s*/i, '').toLowerCase()));
+    todo.push({
+      tag: 'see a clinician',
+      text: `There is redness around the ${where}. If it comes and goes, it is nothing. If it is always there, it is worth a dermatologist rather than a product — rosacea and seborrhoeic dermatitis both look like this and both have real treatments.`,
+    });
+  }
+  for (const x of a.structural) {
+    const opt = x.opts[0];
+    if (!opt) continue;
+    todo.push({ tag: opt.kind, text: `${plainLabel(x.item.label)} measures well outside the usual range. ${opt.what || ''}` });
+  }
+
+  return `
+    ${viewToggle()}
+    <div class="plain">
+      <p class="headline">${esc(headline)}</p>
+      ${todo.length ? `
+        <h3>What you could actually do</h3>
+        <ul class="todo">${todo.map((t) => `<li>${esc(t.text)}${t.tag ? ` <span class="badge">${esc(t.tag)}</span>` : ''}</li>`).join('')}</ul>`
+        : `<h3>What you could actually do</h3>
+           <p>Nothing on this list needs doing. The things that would genuinely change how a face reads — sleep, sun protection, weight, grooming, and how the photo was taken — are mostly not things this tool can measure, and none of them showed a problem here.</p>`}
+      <p class="plainfoot">
+        This measures geometry. It cannot tell you whether a face looks good, because no measurement can — that varies by person, culture and context, and the parts that people agree on are mostly skin, expression and grooming rather than proportions.
+      </p>
+    </div>`;
+}
+
+/** Turn a metric name into something you would say. */
+function plainLabel(label) {
+  const map = {
+    'Brow-to-lid distance': 'how low the brows sit',
+    'Lower third split': 'where the mouth sits between nose and chin',
+    'Philtrum ÷ chin height': 'the gap between nose and lip against chin length',
+    'Canthal tilt': 'the tilt of the eyes',
+    'Inner-corner distance': 'how far apart the eyes are',
+    'Eye width': 'eye width',
+    'Mouth width': 'mouth width',
+    'Nose width': 'nose width',
+    'Upper ÷ lower lip height': 'the balance between upper and lower lip',
+    'Lip height ÷ lower third': 'lip fullness',
+    'Philtrum length': 'the gap between nose and upper lip',
+    'Facial thirds — worst deviation': 'how evenly the face divides into thirds',
+    'Asymmetry (RMS)': 'left-right asymmetry',
+    'Jaw width ÷ cheekbone width': 'how much the face tapers to the jaw',
+  };
+  return map[label] || label.toLowerCase();
+}
+
+/** Strip the colourimetry out of the skin advice. */
+function plainSkin(t) {
+  return String(t)
+    .replace(/The colour shift is toward blue, which is thin skin over the vasculature rather than pigment\./,
+      'These look like the kind caused by thin skin rather than pigment.')
+    .replace(/The colour shift is toward brown, which is pigment\./,
+      'These look like pigment rather than shadow.');
+}
+
+const listSentence = (a) => (a.length <= 1 ? (a[0] || '') : `${a.slice(0, -1).join(', ')} and ${a[a.length - 1]}`);
+
+function viewToggle() {
+  const plain = S.view === 'plain';
+  return `<div class="viewtoggle">
+    <button class="vt${plain ? ' is-on' : ''}" data-view="plain">Plain</button>
+    <button class="vt${plain ? '' : ' is-on'}" data-view="detail">Every measurement</button>
+  </div>`;
+}
+
+function wireViewToggle(host) {
+  host.querySelectorAll('[data-view]').forEach((b) => b.addEventListener('click', () => {
+    S.view = b.dataset.view;
+    try { localStorage.setItem('prosopon.view', S.view); } catch (e) {}
+    drawReport();
+  }));
+}
+
 function drawReport() {
   recompute();
   const res = S.front.res;
@@ -306,6 +443,12 @@ function drawReport() {
   const poseLine = p
     ? `<div class="sides"><span>yaw ${p.yaw.toFixed(1)}&deg;</span><span>pitch ${p.pitch.toFixed(1)}&deg;</span><span>roll ${res.rollEyes.toFixed(1)}&deg;</span></div>`
     : '';
+
+  if (S.view === 'plain') {
+    host.innerHTML = plainReport(rows, sum);
+    wireViewToggle(host);
+    return;
+  }
 
   const mutGroups = byMutability([...sum.notable, ...sum.slight]);
   const mutHtml = mutGroups.length ? `<div class="mut">
@@ -325,6 +468,7 @@ function drawReport() {
   </div>` : '';
 
   host.innerHTML = `
+    ${viewToggle()}
     ${notes}
     <div class="section">
       <h3>Overview</h3>
@@ -352,6 +496,7 @@ function drawReport() {
       These are measurements of geometry, not judgements of a person. Reference ranges come from specific study populations, chiefly North American and European. Nothing here is a medical opinion.
     </p>`;
 
+  wireViewToggle(host);
   host.querySelectorAll('.row').forEach((r) => {
     const id = r.dataset.metric;
     r.addEventListener('mouseenter', () => { S.front.highlight = id; repaint(); });

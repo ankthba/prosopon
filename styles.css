@@ -790,3 +790,42 @@ input[type="range"]:hover::-webkit-slider-thumb { background: var(--color-fg); }
 .morphwrap.draggable { cursor: ew-resize; touch-action: none; }
 .morphhandle span { pointer-events: none; }
 .morphwrap.draggable .morphhandle span { box-shadow: 0 0 0 4px var(--wash-ink); }
+
+/* ============================================================
+   Plain view
+   ============================================================ */
+.viewtoggle {
+  display: flex; gap: 1.1em; align-items: baseline;
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: var(--space-xs); margin-bottom: var(--space-sm);
+}
+.vt {
+  background: none; border: 0; padding: 0 0 .15em; cursor: pointer;
+  font-size: var(--text-micro); letter-spacing: .12em; text-transform: uppercase;
+  color: var(--color-faint); border-bottom: 1px solid transparent;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+.vt:hover { color: var(--color-fg); }
+.vt.is-on { color: var(--color-fg); border-bottom-color: var(--color-rule-strong); }
+
+.plain .headline {
+  font-size: var(--text-h2); line-height: 1.35; margin-bottom: 1em;
+  color: var(--color-fg); text-wrap: pretty;
+}
+.plain h3 {
+  font-size: var(--text-micro); letter-spacing: .12em; text-transform: uppercase;
+  color: var(--color-fg); margin: var(--space-md) 0 var(--space-xs);
+  padding-bottom: var(--space-xs); border-bottom: 1px solid var(--color-rule-strong);
+}
+.plain p { color: var(--color-muted); text-wrap: pretty; }
+.plain .todo { list-style: none; padding: 0; margin: 0; }
+.plain .todo li {
+  padding: .7em 0; border-bottom: 1px solid var(--color-border);
+  font-size: var(--text-small); color: var(--color-fg); text-wrap: pretty;
+}
+.plain .todo .badge { margin-left: .5em; vertical-align: .05em; }
+.plain .plainfoot {
+  font-size: var(--text-smaller); color: var(--color-faint); font-style: italic;
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-xs); margin-top: var(--space-md);
+}
