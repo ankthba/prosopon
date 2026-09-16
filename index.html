@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>prosopon — facial morphometrics</title>
+<link rel="preload" as="font" type="font/woff2" href="vendor/fonts/ebgaramond-400.woff2" crossorigin>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="top">
+  <h1>prosopon</h1>
+  <p class="sub">landmark morphometrics &middot; sourced reference ranges &middot; nothing leaves this machine</p>
+  <nav class="modes" role="tablist">
+    <button class="mode is-on" data-mode="front" role="tab">Frontal</button>
+    <button class="mode" data-mode="profile" role="tab">Profile</button>
+    <button class="mode" data-mode="method" role="tab">Method</button>
+  </nav>
+  <div class="topright">
+    <label class="sel"><span class="label">Norms</span>
+      <select id="sex">
+        <option value="">both sexes</option>
+        <option value="male">male</option>
+        <option value="female">female</option>
+      </select>
+    </label>
+    <button id="export" class="btn ghost sm" disabled>Export</button>
+  </div>
+</header>
+
+<main>
+  <!-- ============ FRONTAL ============ -->
+  <section class="pane" id="pane-front">
+    <div class="stage">
+      <div id="drop" class="drop">
+        <div class="dropinner">
+          <svg viewBox="0 0 24 24" class="dropicon" aria-hidden="true"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <h2>Drop a front-facing photo</h2>
+          <p>Neutral expression, eyes open, camera at eye level and at least two metres away, even light on both sides.</p>
+          <button class="btn" id="pick">Choose photo</button>
+          <button class="btn ghost" id="sample">Use a sample</button>
+          <input type="file" id="file" accept="image/*" hidden>
+        </div>
+      </div>
+      <div class="viewer" id="viewer" hidden>
+        <div class="canvaswrap" id="cwrap">
+          <img id="photo" alt="">
+          <canvas id="overlay"></canvas>
+          <div class="handle" id="trichionHandle" title="Drag to the hairline"></div>
+        </div>
+        <div class="layers" id="layers"></div>
+        <div class="stagefoot">
+          <button class="btn ghost sm" id="reset">New photo</button>
+          <span class="hint" id="scalehint"></span>
+        </div>
+      </div>
+    </div>
+    <aside class="report" id="report">
+      <div class="empty">Load a photo to begin.</div>
+    </aside>
+  </section>
+
+  <!-- ============ PROFILE ============ -->
+  <section class="pane" id="pane-profile" hidden>
+    <div class="stage">
+      <div id="pdrop" class="drop">
+        <div class="dropinner">
+          <svg viewBox="0 0 24 24" class="dropicon" aria-hidden="true"><path d="M15 3c-4 0-6 3-6 6 0 2-2 3-2 4.5S9 15 9 15v3a3 3 0 0 0 3 3h3" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <h2>Drop a side-profile photo</h2>
+          <p>A true 90&deg; view: the far eyebrow and far cheek should not be visible. You place the landmarks by hand, which is how cephalometric analysis is actually done and beats automatic fitting on a lateral view.</p>
+          <button class="btn" id="ppick">Choose photo</button>
+          <input type="file" id="pfile" accept="image/*" hidden>
+        </div>
+      </div>
+      <div class="viewer" id="pviewer" hidden>
+        <div class="canvaswrap" id="pcwrap">
+          <img id="pphoto" alt="">
+          <canvas id="poverlay"></canvas>
+        </div>
+        <div class="placer" id="placer"></div>
+        <div class="stagefoot">
+          <button class="btn ghost sm" id="preset">New photo</button>
+          <button class="btn ghost sm" id="pundo">Undo last point</button>
+          <span class="hint" id="pscalehint"></span>
+        </div>
+      </div>
+    </div>
+    <aside class="report" id="preport">
+      <div class="empty">Load a profile photo to begin.</div>
+    </aside>
+  </section>
+
+  <!-- ============ METHOD ============ -->
+  <section class="pane solo" id="pane-method" hidden>
+    <article class="prose" id="method"></article>
+  </section>
+</main>
+
+<div class="toast" id="toast" hidden></div>
+<script type="module" src="src/app.js"></script>
+</body>
+</html>

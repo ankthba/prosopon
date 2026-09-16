@@ -1,0 +1,43 @@
+<!doctype html><html><head><meta charset="utf-8"><title>validate</title></head><body>
+<!-- Validation harness. Runs the whole pipeline over the portrait set and
+     reports, per measurement, how many faces land typical / slightly off /
+     well outside. A measurement that flags most of a diverse population is
+     broken, not insightful — that is what this is for.
+     The portraits are not shipped with the repo (see testdata/SOURCES.md);
+     missing files are reported as errors and skipped. -->
+<pre id="o">running...</pre>
+<script type="module">
+import { FaceLandmarker, FilesetResolver } from './vendor/tasks-vision/vision_bundle.mjs';
+import { buildPoints } from './src/landmarks.js';
+import { computeFrontal, qualityCheck } from './src/metrics-front.js';
+import { buildRows, summarise } from './src/report.js';
+const FILES = ["Alex_Padilla_Senate_portrait_117th.jpg", "Angela_Merkel_2019_cropped.jpg", "Antonio_Taguba_official_portrait.jpg", "Chi_Onwurah_official_portrait_2024.jpg", "Daniel_Inouye_Senate_portrait_2008.jpg", "Deb_Haaland_official_portrait_116th.jpg", "Eric_Shinseki_official_portrait.jpg", "Florence_Eshalomi_official_portrait_2024.jpg", "Kai_Kahele_official_portrait_117th.jpg", "Katherine_Johnson_1983.jpg", "Katherine_Tai_official_portrait.jpg", "Lloyd_Austin_official_portrait_2023.jpg", "Marie_Curie_c._1920s.jpg", "Official_portrait_of_Barack_Obama.jpg", "Rushanara_Ali_official_portrait.jpg", "Sitting_Bull_1885.jpg", "Sultan_Al_Neyadi_Crew6_portrait.jpg", "Zarah_Sultana_official_portrait.jpg"];
+window.VAL={done:false};
+try{
+const fs=await FilesetResolver.forVisionTasks('./vendor/tasks-vision/wasm');
+const fl=await FaceLandmarker.createFromOptions(fs,{baseOptions:{modelAssetPath:'./models/face_landmarker.task',delegate:'CPU'},runningMode:'IMAGE',numFaces:1,outputFacialTransformationMatrixes:true});
+const rows=[], perMetric={};
+for(const f of FILES){
+  const img=new Image(); img.src='./testdata/'+encodeURIComponent(f);
+  try{ await img.decode(); }catch(e){ rows.push({f,err:'decode'}); continue; }
+  const det=fl.detect(img);
+  if(!det.faceLandmarks?.length){ rows.push({f,err:'noface'}); continue; }
+  const ctx=buildPoints(det.faceLandmarks[0], img.naturalWidth, img.naturalHeight);
+  const mat=det.facialTransformationMatrixes?.[0]?.data??null;
+  const r=computeFrontal(ctx,{matrix:mat});
+  const rws=buildRows(r,null), sum=summarise(rws);
+  for(const g of rws) for(const it of g.items){
+    (perMetric[it.id] ||= {typical:0,slight:0,notable:0,unscored:0,vals:[]});
+    perMetric[it.id][it.status]=(perMetric[it.id][it.status]||0)+1;
+    if(Number.isFinite(it.value)) perMetric[it.id].vals.push(+it.value.toFixed(2));
+  }
+  const q=qualityCheck(r,ctx);
+  rows.push({f:f.replace(/\.jpe?g$/i,'').slice(0,30),
+    pitch:+r.pose.pitch.toFixed(1), yaw:+r.pose.yaw.toFixed(1), roll:+r.rollEyes.toFixed(1),
+    typ:sum.typical.length, sli:sum.slight.length, not:sum.notable.length, tot:sum.total,
+    notable:sum.notable.map(i=>i.id), fails:q.filter(i=>i.level==='fail').length});
+}
+window.VAL={done:true,rows,perMetric};
+document.getElementById('o').textContent=JSON.stringify({rows},null,1);
+}catch(e){window.VAL={done:true,error:String(e)};document.getElementById('o').textContent='ERR '+e+'\n'+e.stack;}
+</script></body></html>

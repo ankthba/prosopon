@@ -1,0 +1,14 @@
+# Vendored MediaPipe runtime (~21MB of wasm) and the landmark model (3.6MB).
+# Fetched by ./setup.sh rather than committed.
+vendor/tasks-vision/
+models/
+
+# Sample portraits. Photographs of real people, under a mix of public-domain
+# and CC BY terms — fetched by ./setup.sh, not redistributed here.
+# See testdata/SOURCES.md for the list and where each one comes from.
+testdata/*.jpg
+testdata/*.jpeg
+testdata/*.png
+!testdata/SOURCES.md
+
+.DS_Store
