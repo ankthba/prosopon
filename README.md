@@ -73,10 +73,25 @@ dimorphism projection built only from measurements that actually have separate
 male and female references. Neither is scored: averageness has a real research
 basis, but eighteen faces is not a population.
 
+**Camera** — capture straight from the webcam when there is no photo to hand.
+The preview is mirrored so it reads like a mirror; the captured frame is not,
+because flipping it would swap the subject's left and right and invert every
+asymmetry finding. A webcam is the worst case for this tool — short working
+distance and a wide lens enlarge whatever is nearest — so a photo taken that way
+is flagged as such in the report.
+
 **Preview** — a piecewise-affine warp of the photograph toward an adjusted
 landmark configuration, with a before/after split. Eight controls: thirds, mouth
 position, canthal tilt, brow height, alar width, lip fullness, chin height, jaw
-width. This is deliberately not an AI projection. It moves the pixels that are
+width, a **Recommended** button, and a before/after split you can drag on the
+image itself. Recommended is solved rather than guessed: each slider's range is
+sampled, the real measurement is re-run on the moved landmarks, and the value
+that brings the metric closest to its reference wins. Only measurements that are
+genuinely scored and genuinely outside their range are touched, which on a
+typical face is three of the eight sliders — the thirds are unscored, alar width
+and the nasal index are ancestry-sensitive, and jaw width has no comparable
+caliper reference, so none of them gets a recommendation. This is deliberately
+not an AI projection. It moves the pixels that are
 there, so it cannot add tissue, cannot relight a changed surface, and goes
 rubbery past small adjustments — which is why the ranges are clamped.
 

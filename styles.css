@@ -760,3 +760,33 @@ input[type="range"]:hover::-webkit-slider-thumb { background: var(--color-fg); }
 .opt .what { text-wrap: pretty; }
 .opt .tags { display: flex; gap: .35em; flex-wrap: wrap; justify-content: flex-end; }
 .opt .ev { font-size: .7rem; color: var(--color-faint); grid-column: 1 / -1; font-style: italic; }
+
+/* ============================================================
+   Camera capture
+   ============================================================ */
+.camera { display: flex; flex-direction: column; gap: var(--space-sm); }
+.camwrap { position: relative; align-self: center; max-width: 100%; }
+.camwrap:has(video[hidden]) { border: 0; background: none; }
+.camwrap video {
+  display: block; max-width: 100%; max-height: min(66vh, 760px);
+  /* Mirrored for the preview only, because an unmirrored live view of your own
+     face is disorienting. The captured frame is NOT mirrored — flipping it
+     would swap the subject's left and right and invert every asymmetry. */
+  transform: scaleX(-1);
+  background: var(--color-bg-alt);
+}
+.camguide { position: absolute; inset: 0; pointer-events: none; }
+.camguide i { position: absolute; background: var(--color-scrim); opacity: .55; }
+.camguide .eyeline { left: 8%; right: 8%; top: 42%; height: 1px; }
+.camguide .midline { top: 6%; bottom: 6%; left: 50%; width: 1px; }
+.camnote {
+  text-align: center; font-size: var(--text-smaller);
+  color: var(--color-muted); max-width: 46ch; margin: 0 auto; text-wrap: pretty;
+}
+
+/* ============================================================
+   Draggable before/after split
+   ============================================================ */
+.morphwrap.draggable { cursor: ew-resize; touch-action: none; }
+.morphhandle span { pointer-events: none; }
+.morphwrap.draggable .morphhandle span { box-shadow: 0 0 0 4px var(--wash-ink); }

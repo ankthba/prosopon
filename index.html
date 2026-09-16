@@ -41,8 +41,21 @@
           <h2>Drop a front-facing photo</h2>
           <p>Neutral expression, eyes open, camera at eye level and at least two metres away, even light on both sides.</p>
           <button class="btn" id="pick">Choose photo</button>
+          <button class="btn ghost" id="shoot">Take a photo</button>
           <button class="btn ghost" id="sample">Use a sample</button>
           <input type="file" id="file" accept="image/*" hidden>
+        </div>
+      </div>
+      <div class="camera" id="cameraView" hidden>
+        <div class="canvaswrap camwrap">
+          <video id="camVideo" playsinline muted></video>
+          <div class="camguide" aria-hidden="true"><i class="eyeline"></i><i class="midline"></i></div>
+        </div>
+        <p class="camnote" id="camNote"></p>
+        <div class="stagefoot">
+          <button class="btn" id="camShoot">Capture</button>
+          <button class="btn ghost sm" id="camCancel">Cancel</button>
+          <label class="sel"><span class="label">Camera</span><select id="camPick"></select></label>
         </div>
       </div>
       <div class="viewer" id="viewer" hidden>
@@ -106,6 +119,7 @@
           <span class="label">Before</span>
           <input type="range" id="morphSplit" min="0" max="100" value="50" aria-label="Before / after split">
           <span class="label">After</span>
+          <button class="btn sm" id="morphRecommend">Recommended</button>
           <button class="btn ghost sm" id="morphReset">Reset all</button>
         </div>
       </div>

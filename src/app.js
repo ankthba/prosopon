@@ -89,9 +89,9 @@ const readImage = (file) => new Promise((res, rej) => {
 
 wireDrop($('#drop'), loadFrontal);
 $('#pick').addEventListener('click', () => $('#file').click());
-$('#file').addEventListener('change', (e) => e.target.files[0] && loadFrontal(e.target.files[0]));
+$('#file').addEventListener('change', (e) => { if (e.target.files[0]) { S.front.source = 'file'; loadFrontal(e.target.files[0]); } });
 const SAMPLE = './testdata/Official_portrait_of_Barack_Obama.jpg';
-$('#sample').addEventListener('click', () => loadFrontalFromSrc(SAMPLE));
+$('#sample').addEventListener('click', () => { S.front.source = 'sample'; loadFrontalFromSrc(SAMPLE); });
 // The sample portraits are not shipped with the repo, so only offer the button
 // if one is actually present.
 fetch(SAMPLE, { method: 'HEAD' })
@@ -299,7 +299,8 @@ function drawReport() {
 
   const NOTE_TITLE = { fail: 'Not reliable', warn: 'Check the photo', info: 'Note' };
   const notes = S.front.issues.map((i) =>
-    `<div class="note ${i.level}"><b>${NOTE_TITLE[i.level]}</b>${esc(i.msg)}</div>`).join('');
+    `<div class="note ${i.level}"><b>${NOTE_TITLE[i.level]}</b>${esc(i.msg)}</div>`).join('')
+    + (S.front.source === 'camera' ? `<div class="note warn"><b>Taken on a webcam</b>Short working distance and a wide lens enlarge whatever is closest to the camera, so the nose reads wide and the face narrow. The ratios survive this better than the millimetre figures do. For anything you intend to compare over time, shoot from two metres with the same camera each time.</div>` : '');
 
   const p = res.pose;
   const poseLine = p
@@ -642,6 +643,108 @@ function computeAndDrawProfile() {
   }));
 }
 
+// ============================ CAMERA ============================
+//
+// A laptop webcam is the worst case for this tool and the UI says so rather
+// than quietly measuring it: the lens is wide, the working distance is short,
+// and that combination enlarges whatever is nearest the camera. A face shot at
+// arm's length measures with a bigger nose and a narrower head than the same
+// face shot from two metres. Everything here still runs; the millimetre figures
+// just carry more error than they do from a proper portrait distance.
+
+const cam = { stream: null, devices: [] };
+
+async function openCamera() {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    toast('This browser will not give a page camera access.', 4000); return;
+  }
+  $('#drop').hidden = true;
+  $('#cameraView').hidden = false;
+  setCamControls(false);
+  $('#camNote').textContent = 'Asking for camera access\u2026';
+  try {
+    await startStream();
+    setCamControls(true);
+    $('#camNote').textContent = 'Camera at eye level, arm fully extended or further, and look straight at the lens. Even light on both sides \u2014 a window in front of you is ideal, a lamp above you is not. The preview is mirrored so it reads like a mirror; the captured frame is not.';
+  } catch (e) {
+    setCamControls(false);
+    $('#camNote').textContent = e && e.name === 'NotAllowedError'
+      ? 'Camera access was declined. Allow it in this site\u2019s permissions, or choose a photo instead.'
+      : e && e.name === 'NotFoundError'
+        ? 'No camera was found on this machine.'
+        : `Could not open the camera: ${e?.message || e}`;
+  }
+}
+
+/** Capture and the device picker only make sense once a stream is live. */
+function setCamControls(live) {
+  $('#camShoot').hidden = !live;
+  $('#camPick').parentElement.hidden = !live || cam.devices.length < 2;
+  $('#camVideo').hidden = !live;
+}
+
+async function startStream(deviceId) {
+  stopStream();
+  const constraints = {
+    audio: false,
+    video: deviceId
+      ? { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+      : { facingMode: 'user', width: { ideal: 1920 }, height: { ideal: 1080 } },
+  };
+  cam.stream = await navigator.mediaDevices.getUserMedia(constraints);
+  const v = $('#camVideo');
+  v.srcObject = cam.stream;
+  await v.play();
+
+  // Device labels are only populated once permission has been granted, so the
+  // picker is filled after the first successful open rather than before it.
+  try {
+    const all = await navigator.mediaDevices.enumerateDevices();
+    cam.devices = all.filter((d) => d.kind === 'videoinput');
+    const sel = $('#camPick');
+    sel.innerHTML = cam.devices.map((d, i) =>
+      `<option value="${esc(d.deviceId)}">${esc(d.label || `Camera ${i + 1}`)}</option>`).join('');
+    const active = cam.stream.getVideoTracks()[0]?.getSettings?.().deviceId;
+    if (active) sel.value = active;
+    sel.parentElement.hidden = cam.devices.length < 2;
+    $('#camVideo').hidden = false;
+  } catch (e) { /* the picker is a convenience, not a requirement */ }
+}
+
+function stopStream() {
+  if (cam.stream) { cam.stream.getTracks().forEach((t) => t.stop()); cam.stream = null; }
+  const v = $('#camVideo'); if (v) v.srcObject = null;
+}
+
+function closeCamera() {
+  stopStream();
+  setCamControls(false);
+  $('#cameraView').hidden = true;
+  if ($('#viewer').hidden) $('#drop').hidden = false;
+}
+
+$('#shoot').addEventListener('click', openCamera);
+$('#camCancel').addEventListener('click', closeCamera);
+$('#camPick').addEventListener('change', (e) => startStream(e.target.value).catch(() => {}));
+
+$('#camShoot').addEventListener('click', async () => {
+  const v = $('#camVideo');
+  const w = v.videoWidth, h = v.videoHeight;
+  if (!w || !h) { toast('The camera is not ready yet.'); return; }
+  const cv = document.createElement('canvas');
+  cv.width = w; cv.height = h;
+  // Drawn straight, NOT mirrored. The preview is CSS-flipped so it reads like a
+  // mirror, but flipping the capture would swap the subject's left and right
+  // and invert every asymmetry finding in the report.
+  cv.getContext('2d').drawImage(v, 0, 0, w, h);
+  const url = cv.toDataURL('image/jpeg', 0.95);
+  closeCamera();
+  S.front.source = 'camera';
+  await loadFrontalFromSrc(url);
+});
+
+window.addEventListener('pagehide', stopStream);
+
 // ============================ PREVIEW (morph) ============================
 //
 // A piecewise-affine warp of the actual photograph, not a prediction. It shows
@@ -655,7 +758,9 @@ function drawPreviewPane() {
   $('#previewViewer').hidden = !ok;
   if (!ok) { $('#previewPanel').innerHTML = '<div class="empty">Analyse a frontal photo first.</div>'; return; }
 
+  $('#morphwrap').classList.add('draggable');
   $('#previewPanel').innerHTML = `
+    <div id="recNotes"></div>
     <div class="section">
       <h3>Adjustments</h3>
       <p class="gnote">Each slider moves landmarks and warps the photograph to follow. Nothing here predicts a surgical result, and none of these targets is a goal &mdash; they are the canons the report spends its time qualifying.</p>
@@ -682,6 +787,90 @@ function drawPreviewPane() {
     });
   });
   renderPreview();
+}
+
+// Which control can act on which measurement, and in which direction the
+// slider has to move to close the gap.
+//
+// Only five of the eight controls appear here, and that is the point. A
+// recommendation is only defensible when the measurement behind it is actually
+// scored: the thirds are unscored (the mesh has no hairline), alar width and
+// the nasal index are ancestry-sensitive, and jaw width is a silhouette
+// measurement with no comparable caliper reference. Recommending a change on
+// the strength of a number the report refuses to score would contradict the
+// report.
+const RECOMMENDABLE = {
+  lowerThird: 'lowerThirdRatio',
+  canthalTilt: 'canthalTilt',
+  browHeight: 'browEyeMm',
+  lipFullness: 'vermilionOverLower3',
+  chinHeight: 'philtrumOverChin',
+};
+
+/** Where a reference wants the value to sit. */
+function refTarget(id) {
+  const entry = NORMS[id];
+  const ref = refFor(entry, S.sex || null);
+  if (!ref) return null;
+  return ref.kind === 'nm' ? ref.mean : (ref.lo + ref.hi) / 2;
+}
+
+/** Recompute the whole frontal report from a warped landmark set.
+ *
+ *  Rebuilds a context from the moved points and runs the real computeFrontal
+ *  rather than reimplementing any measurement, so the solver cannot drift away
+ *  from what the report says. z is dropped, which only matters for head pose,
+ *  and pose is not being solved for. */
+function metricsFromPoints(rawPts, ctx) {
+  const lm = rawPts.map((p) => ({ x: p.x / ctx.imgW, y: p.y / ctx.imgH, z: 0 }));
+  const c2 = buildPoints(lm, ctx.imgW, ctx.imgH);
+  return computeFrontal(c2, { sex: S.sex || null, matrix: null, trichionY: S.front.trichionY });
+}
+
+/** Solve each control for the value that brings its measurement closest to the
+ *  reference, by sampling its own declared range. Controls are solved one at a
+ *  time: they move mostly disjoint landmarks, and a joint solve would buy
+ *  precision the underlying references do not have. */
+function recommendSettings() {
+  const res = S.front.res, ctx = S.front.ctx;
+  if (!res || !ctx) return { settings: {}, notes: ['No analysis to work from.'] };
+
+  const rows = buildRows(res, S.sex || null);
+  const byId = Object.fromEntries(rows.flatMap((g) => g.items.map((i) => [i.id, i])));
+  const out = {}, notes = [];
+  const un = res.aligned.unrotate;
+
+  for (const [ctlId, metricId] of Object.entries(RECOMMENDABLE)) {
+    const spec = MORPH_CONTROLS.find((c) => c.id === ctlId);
+    const item = byId[metricId];
+    if (!spec || !item) continue;
+    if (item.status === 'typical') continue;                 // nothing to close
+    if (item.status === 'unscored' || item.uncalibrated
+        || item.ancestrySensitive || item.provisional) continue;
+    const target = refTarget(metricId);
+    if (!Number.isFinite(target) || !Number.isFinite(item.value)) continue;
+
+    let best = { v: 0, err: Math.abs(item.value - target) };
+    const steps = 16;
+    for (let i = 0; i <= steps; i++) {
+      const v = spec.min + (spec.max - spec.min) * (i / steps);
+      if (v === 0) continue;
+      let warped;
+      try { warped = targetLandmarks(res.aligned.P, res, { [ctlId]: v }); } catch (e) { continue; }
+      let m;
+      try { m = metricsFromPoints(warped.map(un), ctx); } catch (e) { continue; }
+      const got = m.metrics[metricId]?.value;
+      if (!Number.isFinite(got)) continue;
+      const err = Math.abs(got - target);
+      if (err < best.err) best = { v, err };
+    }
+    if (best.v !== 0) {
+      const q = Math.round(best.v / spec.step) * spec.step;
+      out[ctlId] = +q.toFixed(2);
+      notes.push(`${spec.label}: ${q > 0 ? '+' : ''}${+q.toFixed(1)}${spec.unit || ''} to bring ${item.label.toLowerCase()} from ${item.display} toward ${fmtValue(metricId, target, item.unit)}.`);
+    }
+  }
+  return { settings: out, notes };
 }
 
 function renderPreview() {
@@ -737,10 +926,80 @@ function renderPreview() {
 $('#morphSplit').addEventListener('input', (e) => {
   S.morph.split = +e.target.value; renderPreview();
 });
+
+// Drag the split directly on the image. The handle itself stays
+// pointer-events:none so it never swallows the gesture; the wrapper owns it,
+// which also means clicking anywhere on the photo jumps the split there.
+(() => {
+  const wrap = $('#morphwrap');
+  let dragging = false;
+  const setFromEvent = (e) => {
+    const r = wrap.getBoundingClientRect();
+    if (!r.width) return;
+    const pct = ((e.clientX - r.left) / r.width) * 100;
+    S.morph.split = Math.max(0, Math.min(100, pct));
+    $('#morphSplit').value = Math.round(S.morph.split);
+    renderPreview();
+  };
+  wrap.addEventListener('pointerdown', (e) => {
+    if ($('#morphHandle').hidden) return;   // nothing warped, nothing to split
+    dragging = true;
+    wrap.setPointerCapture(e.pointerId);
+    setFromEvent(e);
+    e.preventDefault();
+  });
+  wrap.addEventListener('pointermove', (e) => { if (dragging) setFromEvent(e); });
+  const stop = (e) => {
+    if (!dragging) return;
+    dragging = false;
+    try { wrap.releasePointerCapture(e.pointerId); } catch (err) {}
+  };
+  wrap.addEventListener('pointerup', stop);
+  wrap.addEventListener('pointercancel', stop);
+})();
+
+// ---------------- recommended ----------------
+$('#morphRecommend').addEventListener('click', async () => {
+  // The solve re-runs the full measurement pipeline once per sampled slider
+  // position, which takes a couple of seconds. Yield a frame first so the
+  // button can repaint as busy, or it reads as a dead click.
+  const btn = $('#morphRecommend');
+  const label = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Solving\u2026';
+  await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
+  let settings, notes;
+  try { ({ settings, notes } = recommendSettings()); }
+  finally { btn.disabled = false; btn.textContent = label; }
+  const ids = Object.keys(settings);
+  if (!ids.length) {
+    toast('Nothing to recommend: every measurement a slider can act on is already inside its reference.', 5000);
+    return;
+  }
+  S.morph.settings = { ...settings };
+  $$('#previewPanel input[data-ctl]').forEach((el) => {
+    const v = settings[el.dataset.ctl] ?? 0;
+    el.value = v;
+    const spec = MORPH_CONTROLS.find((c) => c.id === el.dataset.ctl);
+    const amt = $(`#previewPanel [data-amt="${el.dataset.ctl}"]`);
+    if (amt) {
+      amt.textContent = `${v > 0 ? '+' : ''}${v}${spec?.unit || ''}`;
+      amt.classList.toggle('on', v !== 0);
+    }
+  });
+  const host = $('#recNotes');
+  if (host) {
+    host.innerHTML = `<div class="note info"><b>Where these came from</b>
+      Each slider was solved for the value that brings its own measurement closest to the reference, by sampling the slider's range and re-running the real measurement on the moved landmarks. Only measurements that are actually scored and actually outside their range are touched &mdash; ${ids.length} of ${MORPH_CONTROLS.length} here.
+      <br><br>${notes.map((n) => esc(n)).join('<br>')}
+      <br><br>This is not advice. It is the arithmetic of moving a number to the middle of a band, and the report spends most of its length explaining why the middle of a band is not a goal.</div>`;
+  }
+  renderPreview();
+});
 $('#morphReset').addEventListener('click', () => {
   S.morph.settings = {};
   $$('#previewPanel input[data-ctl]').forEach((el) => { el.value = 0; });
   $$('#previewPanel .amt').forEach((el) => { el.textContent = '0'; el.classList.remove('on'); });
+  const host = $('#recNotes'); if (host) host.innerHTML = '';
   renderPreview();
 });
 
